@@ -78,10 +78,13 @@ def builder_argv(home):
     return [*prefix, 'env', '-i', *(f'{key}={value}' for key, value in environment.items())]
 
 
-def give_to_builder(*paths):
+def give_to_builder(*paths, only_if_needed=False):
+    """chown -R to the build account; with only_if_needed, skip trees it already owns."""
     if os.geteuid() == 0:
         account = pwd.getpwnam(BUILD_USER)
         for path in paths:
+            if only_if_needed and Path(path).stat().st_uid == account.pw_uid:
+                continue
             subprocess.run(['chown', '-R', f'{account.pw_uid}:{account.pw_gid}', str(path)], check=True)
 
 
@@ -127,13 +130,18 @@ class Builder:
         if node24 and not (self.home / 'bin/node').exists():
             (self.home / 'bin/node').symlink_to(node24)
         shutil.copy2(ROOT / 'keys/grapheneos_allowed_signers', self.home / 'grapheneos_allowed_signers')
-        give_to_builder(self.home, self.tree)
+        give_to_builder(self.home)
+        # The synced tree is ~140 GiB; re-owning it every build would take minutes.
+        give_to_builder(self.tree, only_if_needed=True)
 
     def ensure_source(self):
         marker = self.tree / '.openfactory-manifest'
         if marker.is_file() and marker.read_text().strip() == self.config['manifest_commit']:
             return
         self.step('sync', '''
+git config --global user.name >/dev/null || git config --global user.name OpenFactory
+git config --global user.email >/dev/null || git config --global user.email builds@openfactory.tech
+git config --global color.ui false
 repo init -u "$MANIFEST_URL" -b "refs/tags/$TAG"
 cd .repo/manifests
 git -c gpg.ssh.allowedSignersFile="$HOME/grapheneos_allowed_signers" verify-tag "$TAG"
