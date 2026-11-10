@@ -185,7 +185,8 @@ printf '%s\\n' "$COMMIT" > .openfactory-manifest
             return
         self.step('vendor', '''
 source build/envsetup.sh >/dev/null
-adevtool generate-all -d "$DEVICE"
+# envsetup.sh defines adevtool as an alias, which a non-interactive shell ignores.
+vendor/adevtool/bin/run generate-all -d "$DEVICE"
 printf '%s\\n' "$TAG" > ".openfactory-vendor-$DEVICE"
 ''', variables={'DEVICE': self.device, 'TAG': self.tag})
 
