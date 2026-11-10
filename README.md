@@ -32,9 +32,13 @@ of SHA-256 digests. Private keys are never packaged.
 
 Run as root, the adapter installs prerequisites with `install-dependencies.sh`
 and runs every upstream step as the `of-grapheneos` account through `setpriv`
-(`--no-new-privs`, empty capability bounding set, clean environment). Expect
-roughly 140 GiB per synced release plus about 250 GiB while compiling, and
-32 GiB of RAM or more. Set `GRAPHENEOS_JOBS` to limit compile parallelism.
+(`--no-new-privs`, empty capability bounding set, clean environment). The
+cache keeps one source tree (`src`, about 140 GiB) and moves it in place to each
+newly pinned release, so a release bump fetches only what changed; compiled
+output of earlier releases is deleted. Expect about 250 GiB more while
+compiling and 32 GiB of RAM or more. Set `GRAPHENEOS_JOBS` to limit compile
+parallelism. Pixels pinned to different release tags at the same time would
+move the one tree back and forth; that needs a shared repo mirror first.
 
 The build proves compilation and signatures only. Flashing, boot, radios and
 updates must be tested on the exact phone. The stock Updater is not included

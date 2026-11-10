@@ -93,7 +93,9 @@ class Builder:
         self.config, self.cache = config, cache
         self.device, self.tag = config['device'], config['tag']
         self.home = cache / 'home'
-        self.tree = cache / ('src-' + self.tag)
+        # One tree, moved in place to each pinned release so a release bump
+        # fetches only what changed instead of a fresh ~136 GiB sync.
+        self.tree = cache / 'src'
         self.logs = cache / 'logs'
         self.redact = []
 
@@ -123,14 +125,36 @@ class Builder:
             print(text, flush=True)
             raise RuntimeError(f'GrapheneOS step {name} failed; full log: {log}')
 
+    def done(self, step):
+        """A step marker names the release it was done for; another release redoes the step."""
+        marker = self.tree / f'.openfactory-{step}-{self.device}'
+        return marker.is_file() and marker.read_text().strip() == self.tag
+
+    def adopt_legacy_tree(self):
+        """Adapters before 2026-11-10 kept src-<tag> per release with empty step markers."""
+        legacy = sorted(self.cache.glob('src-20*'))
+        if self.tree.exists() or not legacy:
+            return
+        tag = legacy[-1].name[len('src-'):]
+        legacy[-1].rename(self.tree)
+        markers = [*self.tree.glob('.openfactory-vendor-*'), *self.tree.glob('.openfactory-compiled-*')]
+        for marker in markers:
+            if not marker.read_text().strip():
+                marker.write_text(tag + '\n')
+        give_to_builder(*markers)
+        # Fail at the move, not at the next release bump, if repo kept absolute paths.
+        self.step('adopt', 'git -C build/make rev-parse HEAD')
+
     def prepare_cache(self):
-        for path in (self.home / 'bin', self.logs, self.tree):
+        for path in (self.home / 'bin', self.logs):
             path.mkdir(parents=True, exist_ok=True)
         node24 = shutil.which('node-24')
         if node24 and not (self.home / 'bin/node').exists():
             (self.home / 'bin/node').symlink_to(node24)
         shutil.copy2(ROOT / 'keys/grapheneos_allowed_signers', self.home / 'grapheneos_allowed_signers')
         give_to_builder(self.home)
+        self.adopt_legacy_tree()
+        self.tree.mkdir(exist_ok=True)
         # The synced tree is ~140 GiB; re-owning it every build would take minutes.
         give_to_builder(self.tree, only_if_needed=True)
 
@@ -151,22 +175,26 @@ repo sync -j8 --force-sync
 "$(command -v yarnpkg || command -v yarn)" --cwd vendor/adevtool/ install --frozen-lockfile
 printf '%s\\n' "$COMMIT" > .openfactory-manifest
 ''', variables={'MANIFEST_URL': MANIFEST_URL, 'TAG': self.tag, 'COMMIT': self.config['manifest_commit']})
+        # Compiled output of earlier releases is never signed again.
+        for old in (self.tree / 'releases').glob('*'):
+            if old.name != self.tag:
+                shutil.rmtree(old)
 
     def ensure_vendor(self):
-        if (self.tree / f'.openfactory-vendor-{self.device}').is_file():
+        if self.done('vendor'):
             return
         self.step('vendor', '''
 source build/envsetup.sh >/dev/null
 adevtool generate-all -d "$DEVICE"
-touch ".openfactory-vendor-$DEVICE"
-''', variables={'DEVICE': self.device})
+printf '%s\\n' "$TAG" > ".openfactory-vendor-$DEVICE"
+''', variables={'DEVICE': self.device, 'TAG': self.tag})
 
     def target_files(self):
         releases = self.tree / 'releases' / self.tag
         return releases / f'{self.device}-target_files.zip', releases / f'{self.device}-otatools.zip'
 
     def ensure_compiled(self):
-        if (self.tree / f'.openfactory-compiled-{self.device}').is_file() and all(p.is_file() for p in self.target_files()):
+        if self.done('compiled') and all(p.is_file() for p in self.target_files()):
             return
         targets = 'vendorbootimage target-files-package otatools-package'
         if self.device not in NO_VENDOR_KERNEL_BOOT:
@@ -178,7 +206,7 @@ lunch "$DEVICE-cur-user"
 m ${{GRAPHENEOS_JOBS:+-j$GRAPHENEOS_JOBS}} {targets}
 script/finalize.sh
 rm -rf out
-touch ".openfactory-compiled-$DEVICE"
+printf '%s\\n' "$BUILD_NUMBER" > ".openfactory-compiled-$DEVICE"
 ''', variables={'DEVICE': self.device, 'BUILD_NUMBER': self.tag})
 
     def ensure_keys(self, keys, password):

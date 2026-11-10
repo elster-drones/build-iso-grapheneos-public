@@ -115,8 +115,8 @@ class PrivilegeTests(unittest.TestCase):
             run = builder.Builder(GOOD, Path(directory))
             run.tree.mkdir()
             (run.tree / '.openfactory-manifest').write_text(GOOD['manifest_commit'] + '\n')
-            (run.tree / '.openfactory-vendor-frankel').touch()
-            (run.tree / '.openfactory-compiled-frankel').touch()
+            (run.tree / '.openfactory-vendor-frankel').write_text(GOOD['tag'] + '\n')
+            (run.tree / '.openfactory-compiled-frankel').write_text(GOOD['tag'] + '\n')
             for path in run.target_files():
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_bytes(b'zip')
@@ -128,6 +128,48 @@ class PrivilegeTests(unittest.TestCase):
             with patch.object(run, 'step') as step:
                 run.ensure_source()
             self.assertEqual(step.call_args.kwargs['variables']['COMMIT'], GOOD['manifest_commit'])
+
+
+class ReleaseBumpTests(unittest.TestCase):
+    def test_a_new_release_moves_the_one_tree_and_redoes_only_release_steps(self):
+        with tempfile.TemporaryDirectory() as directory:
+            old = builder.Builder(GOOD, Path(directory))
+            old.tree.mkdir()
+            (old.tree / '.openfactory-vendor-frankel').write_text(GOOD['tag'] + '\n')
+            (old.tree / '.openfactory-compiled-frankel').write_text(GOOD['tag'] + '\n')
+            for path in old.target_files():
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b'zip')
+            bumped = builder.Builder({**GOOD, 'tag': '2026112000', 'manifest_commit': 'b' * 40}, Path(directory))
+            self.assertEqual(bumped.tree, old.tree)
+            steps = []
+            with patch.object(bumped, 'step', lambda name, *a, **k: steps.append(name)):
+                bumped.ensure_source()
+                bumped.ensure_vendor()
+                bumped.ensure_compiled()
+            self.assertEqual(steps, ['sync', 'vendor', 'compile'])
+            self.assertFalse((old.tree / 'releases' / GOOD['tag']).exists())
+
+    def test_the_per_release_tree_of_earlier_adapters_is_adopted_without_recompiling(self):
+        with tempfile.TemporaryDirectory() as directory:
+            legacy = Path(directory) / ('src-' + GOOD['tag'])
+            legacy.mkdir()
+            (legacy / '.openfactory-manifest').write_text(GOOD['manifest_commit'] + '\n')
+            (legacy / '.openfactory-vendor-frankel').touch()
+            (legacy / '.openfactory-compiled-frankel').touch()
+            releases = legacy / 'releases' / GOOD['tag']
+            releases.mkdir(parents=True)
+            for name in ['frankel-target_files.zip', 'frankel-otatools.zip']:
+                (releases / name).write_bytes(b'zip')
+            run = builder.Builder(GOOD, Path(directory))
+            with patch.object(run, 'step') as step:
+                run.adopt_legacy_tree()
+            self.assertEqual(step.call_args.args[0], 'adopt')
+            self.assertFalse(legacy.exists())
+            with patch.object(run, 'step', side_effect=AssertionError('recompiled')):
+                run.ensure_source()
+                run.ensure_vendor()
+                run.ensure_compiled()
 
 
 class VerifyAndPackageTests(unittest.TestCase):
