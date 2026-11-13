@@ -1,0 +1,258 @@
+{
+  "os": {
+    "apps": [],
+    "boot": {
+      "grub": {
+        "enabled": false,
+        "timeout": 5,
+        "password": null,
+        "superuser": null,
+        "distributor": null,
+        "timeout_style": "hidden",
+        "background_color": null,
+        "background_image_mode": "stretch",
+        "background_image_path": null
+      },
+      "manual_menu": null,
+      "media_overlay": false,
+      "live_bootloader": "source",
+      "kernel_args_default": []
+    },
+    "users": [],
+    "runtime": {
+      "init_system": null,
+      "package_manager": null,
+      "service_manager": null
+    },
+    "branding": {
+      "os_id": null,
+      "version": null,
+      "plymouth": false,
+      "fastfetch": false,
+      "logo_path": null,
+      "display_name": null,
+      "replace_distributor_logos": true
+    },
+    "features": [],
+    "packages": [],
+    "security": {
+      "selinux": false,
+      "fail2ban": false,
+      "audit_logging": false,
+      "disk_encryption": false,
+      "hardening_level": "minimal"
+    },
+    "services": [],
+    "add_snaps": [],
+    "installer": {
+      "type": "calamares",
+      "enabled": false,
+      "delivery": [],
+      "bootloader": "grub",
+      "user_setup": "build_time",
+      "desktop_launcher": true,
+      "verification_cases": [],
+      "package_verification_scopes": {}
+    },
+    "integrity": {
+      "ima_evm": false,
+      "dm_verity": false,
+      "ima_policy": "tcb",
+      "secure_boot": false,
+      "dm_verity_mode": "enforce"
+    },
+    "time_zone": null,
+    "compliance": {
+      "standards": []
+    },
+    "networking": {
+      "vpn": null,
+      "firewall": false,
+      "static_ip": false,
+      "interfaces": [],
+      "dns_servers": [
+        "8.8.8.8",
+        "8.8.4.4"
+      ],
+      "satellite_link": false,
+      "mesh_networking": false
+    },
+    "agent_roles": [],
+    "extra_repos": [],
+    "feature_env": {},
+    "persistence": {
+      "enabled": false,
+      "zone_mode": "ephemeral",
+      "filesystem": "ext4",
+      "zone_policy": {
+        "deny_paths": [],
+        "alert_paths": [],
+        "path_policies": [],
+        "no_executables": true,
+        "writable_paths": [
+          "/etc/hostname",
+          "/etc/machine-id",
+          "/etc/ssh",
+          "/etc/ssl/certs/device.pem",
+          "/etc/openfactory/device.conf",
+          "/etc/openfactory/fleet-endpoint.conf",
+          "/etc/openfactory/fleet-token",
+          "/var/lib/openfactory",
+          "/var/log/audit",
+          "/var/log/openfactory"
+        ],
+        "compliance_mode": null,
+        "audit_all_writes": true,
+        "watched_prefixes": [
+          "/etc",
+          "/var/lib/openfactory",
+          "/var/log/audit",
+          "/var/log/openfactory"
+        ]
+      },
+      "zone3_policy": {
+        "values": [],
+        "filesystems": [
+          {
+            "path": "/tmp",
+            "size": "2G",
+            "mount_tmpfs": true,
+            "require_tmpfs": true,
+            "no_executables": true,
+            "wipe_on_update": true,
+            "max_usage_percent": 80
+          },
+          {
+            "path": "/var/tmp",
+            "size": "1G",
+            "mount_tmpfs": true,
+            "require_tmpfs": true,
+            "no_executables": true,
+            "wipe_on_update": true,
+            "max_usage_percent": 80
+          },
+          {
+            "path": "/var/cache",
+            "size": "1G",
+            "mount_tmpfs": true,
+            "require_tmpfs": true,
+            "no_executables": true,
+            "wipe_on_update": true,
+            "max_usage_percent": 80
+          },
+          {
+            "path": "/dev/shm",
+            "size": "1G",
+            "mount_tmpfs": false,
+            "require_tmpfs": true,
+            "no_executables": true,
+            "wipe_on_update": true,
+            "max_usage_percent": 80
+          },
+          {
+            "path": "/run",
+            "size": "25%",
+            "mount_tmpfs": false,
+            "require_tmpfs": true,
+            "no_executables": true,
+            "wipe_on_update": true,
+            "max_usage_percent": 80
+          }
+        ]
+      },
+      "max_snapshots": 10,
+      "snapshot_on_boot": false,
+      "partition_size_gb": 10,
+      "persistence_paths": [
+        "/"
+      ]
+    },
+    "purge_snapd": false,
+    "chroot_hooks": [],
+    "obs_instance": null,
+    "remove_snaps": [],
+    "custom_packages": [],
+    "source_projects": [],
+    "startup_scripts": [],
+    "desktop_settings": {
+      "fonts": {
+        "title_font": null,
+        "font_hinting": "slight",
+        "document_font": null,
+        "interface_font": null,
+        "monospace_font": null,
+        "font_antialiasing": "rgba"
+      },
+      "power": {
+        "idle_delay": 300,
+        "lid_close_ac_action": "suspend",
+        "power_button_action": "interactive",
+        "sleep_inactive_ac_type": "nothing",
+        "lid_close_battery_action": "suspend",
+        "sleep_inactive_ac_timeout": 0,
+        "sleep_inactive_battery_type": "suspend",
+        "sleep_inactive_battery_timeout": 1800
+      },
+      "gtk_theme": null,
+      "icon_theme": null,
+      "cursor_size": 24,
+      "accent_color": null,
+      "color_scheme": "default",
+      "cursor_theme": null,
+      "asset_sources": [],
+      "favorite_apps": [],
+      "wallpaper_url": null,
+      "wallpaper_mode": "zoom",
+      "custom_gsettings": {},
+      "shell_extensions": [],
+      "wallpaper_prompt": null,
+      "wallpaper_sources": [],
+      "wallpaper_selection": "first"
+    },
+    "file_attachments": [],
+    "excluded_packages": [],
+    "package_overrides": [],
+    "custom_obs_packages": []
+  },
+  "name": "grapheneos-pixel-10",
+  "task": null,
+  "zephyr": null,
+  "openwrt": null,
+  "executor": null,
+  "hardware": {
+    "gpu": null,
+    "board": null,
+    "device": "frankel",
+    "platform": "phone",
+    "gpu_model": null,
+    "nic_count": 1,
+    "architecture": "aarch64",
+    "min_cpu_cores": 1,
+    "min_memory_gb": 2,
+    "min_storage_gb": 16,
+    "minimum_cpu_isa": null
+  },
+  "use_case": "General",
+  "community": false,
+  "distro_id": "grapheneos",
+  "base_image": "grapheneos",
+  "build_mode": null,
+  "publish_to": [
+    "local"
+  ],
+  "source_iso": null,
+  "description": "General",
+  "display_name": null,
+  "package_base": null,
+  "build_strategy": "native",
+  "package_family": null,
+  "proxmox_guests": [],
+  "package_codename": null,
+  "artifact_filename": null,
+  "visual_references": [],
+  "openfactory_policy": {},
+  "notifications_disabled": false,
+  "change_control_enforced": null,
+  "provisioning_credentials_generated": false,
+  "scenarios": []
+}
