@@ -228,6 +228,20 @@ class CompileGuardTests(unittest.TestCase):
             with patch.object(builder, 'secrets_dir', side_effect=AssertionError('prepare needs no keys')):
                 self.assertEqual(self.main(directory, 'prepare'), ['sync', 'vendor', 'compile'])
 
+    def test_prepare_marks_the_cache_with_its_pid_until_it_exits(self):
+        with tempfile.TemporaryDirectory() as directory:
+            marker = Path(directory) / 'cache/.openfactory-preparing'
+            seen = []
+
+            def compile_step(run):
+                seen.append(marker.read_text())
+                raise RuntimeError('GrapheneOS step compile failed')
+
+            with patch.object(builder.Builder, 'ensure_compiled', compile_step), self.assertRaises(RuntimeError):
+                self.main(directory, 'prepare')
+            self.assertEqual(seen, [f'{os.getpid()}\n'])
+            self.assertFalse(marker.exists())
+
 
 class VerifyAndPackageTests(unittest.TestCase):
     def verify(self, directory, **release):

@@ -158,6 +158,21 @@ class Builder:
         # The synced tree is ~140 GiB; re-owning it every build would take minutes.
         give_to_builder(self.tree, only_if_needed=True)
 
+    def prepare(self):
+        """Sync, extract vendor files and compile: hours under the cache lock.
+
+        The platform admits no build while the pid in `.openfactory-preparing`
+        lives, so none waits out its slot on this lock; a dead pid is ignored.
+        """
+        marker = self.cache / '.openfactory-preparing'
+        marker.write_text(f'{os.getpid()}\n')
+        try:
+            self.ensure_source()
+            self.ensure_vendor()
+            self.ensure_compiled()
+        finally:
+            marker.unlink(missing_ok=True)
+
     def ensure_source(self):
         marker = self.tree / '.openfactory-manifest'
         if marker.is_file() and marker.read_text().strip() == self.config['manifest_commit']:
@@ -341,9 +356,7 @@ def main(argv):
         builder = Builder(config, cache)
         builder.prepare_cache()
         if prepare_only:
-            builder.ensure_source()
-            builder.ensure_vendor()
-            builder.ensure_compiled()
+            builder.prepare()
             print(json.dumps({'prepared': config['device'], 'tag': config['tag']}), flush=True)
             return
         # Compiling takes hours and needs an operator's resources, not a build slot's.
