@@ -249,6 +249,20 @@ class CompileGuardTests(unittest.TestCase):
             self.assertFalse(marker.exists())
 
 
+    def test_prepare_leaves_the_marker_to_a_host_loop_that_holds_it(self):
+        with tempfile.TemporaryDirectory() as directory:
+            marker = Path(directory) / 'cache/.openfactory-preparing'
+            (Path(directory) / 'cache').mkdir()
+            with marker.open('w') as host:
+                host.write('4242\n')
+                host.flush()
+                builder.fcntl.flock(host, builder.fcntl.LOCK_EX)
+                with patch.dict(os.environ, {'OPENFACTORY_PREPARE_LOCK_HELD': '1'}):
+                    self.assertEqual(self.main(directory, 'prepare'), ['sync', 'vendor', 'compile'])
+                # Neither relocked (which would wait forever), rewritten nor removed.
+                self.assertEqual(marker.read_text(), '4242\n')
+
+
 class VerifyAndPackageTests(unittest.TestCase):
     def verify(self, directory, **release):
         run = builder.Builder(GOOD, Path(directory))
