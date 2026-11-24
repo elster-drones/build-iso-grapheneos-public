@@ -1,0 +1,19 @@
+Unofficial GrapheneOS build for the Google Pixel 10 (frankel)
+Built by OpenFactory from the official GrapheneOS sources, release 2026110800.
+Signed with your own release and verified boot keys. OpenFactory is not affiliated
+with the GrapheneOS project, and this build has not been tested on a phone.
+
+Verified boot key fingerprint (SHA-256 of avb_pkmd.bin):
+331f2b24a79ee3119b8ed1573ea0e8761e423e89a006361171dac2333c8b2feb
+
+First install (this erases the phone):
+1. Follow https://grapheneos.org/install/cli to enable OEM unlocking and run
+   `fastboot flashing unlock` from the bootloader.
+2. Unzip images/frankel-install-2026110800.zip and run `bash flash-all.sh` inside it.
+   It also installs your verified boot key.
+3. Run `fastboot flashing lock` so the phone only boots builds signed with your key.
+
+Updates: this build has no automatic updater. Build the next release in
+OpenFactory with the same account and phone model, then sideload the update from
+recovery with `adb sideload frankel-ota_update-<release>.zip`. A build signed
+with other keys cannot be installed over this one without erasing the phone.

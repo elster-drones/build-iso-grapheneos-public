@@ -1,0 +1,65 @@
+{
+  "file_names": [
+    "INSTALL.txt",
+    "LICENSE",
+    "avb_pkmd.bin",
+    "images/frankel-install-2026110800.zip",
+    "images/frankel-ota_update-2026110800.zip"
+  ],
+  "manifest": {
+    "architecture": "aarch64",
+    "avb_key_sha256": "331f2b24a79ee3119b8ed1573ea0e8761e423e89a006361171dac2333c8b2feb",
+    "avb_verified": true,
+    "board": "frankel",
+    "build_number": "2026110800",
+    "builder_revision": "cccccccccccccccccccccccccccccccccccccccc",
+    "device": "frankel",
+    "distribution": "grapheneos",
+    "hardware_tested": false,
+    "images": [
+      {
+        "filename": "images/frankel-install-2026110800.zip",
+        "type": "factory"
+      },
+      {
+        "filename": "images/frankel-ota_update-2026110800.zip",
+        "type": "ota"
+      }
+    ],
+    "manifest_commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "manifest_url": "https://github.com/GrapheneOS/platform_manifest.git",
+    "model": "Pixel 10",
+    "runtime_tested": false,
+    "schema_version": 1,
+    "source_url": "https://grapheneos.org/source",
+    "tag": "2026110800"
+  },
+  "manifest_keys": [
+    "architecture",
+    "avb_key_sha256",
+    "avb_verified",
+    "board",
+    "build_number",
+    "builder_revision",
+    "device",
+    "distribution",
+    "files",
+    "hardware_tested",
+    "images",
+    "manifest_commit",
+    "manifest_url",
+    "model",
+    "runtime_tested",
+    "schema_version",
+    "source_url",
+    "tag"
+  ],
+  "zip_names": [
+    "INSTALL.txt",
+    "LICENSE",
+    "avb_pkmd.bin",
+    "images/frankel-install-2026110800.zip",
+    "images/frankel-ota_update-2026110800.zip",
+    "manifest.json"
+  ]
+}

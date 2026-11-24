@@ -1,0 +1,68 @@
+{
+  "build": [
+    {
+      "name": "keys",
+      "script_sha256": "3cb0df2a588a6f6093ad0fa3fca842451f58653b803f7a26215b51b3e93b3b3d",
+      "tree": "src",
+      "variables": [
+        "SUBJECT",
+        "TREE"
+      ]
+    },
+    {
+      "name": "sign",
+      "script_sha256": "a85c9e59f61e3af3c178a327261a46379b53acb1d68be94121610a43a60378a9",
+      "tree": "src",
+      "variables": [
+        "DEVICE",
+        "TAG"
+      ]
+    },
+    {
+      "name": "verify",
+      "script_sha256": "224550d13636b485d05dc3d75db83532545a5a3c47aa4dd154e3efb74f2384ff",
+      "tree": "src",
+      "variables": [
+        "TREE"
+      ]
+    }
+  ],
+  "config_keys": [
+    "device",
+    "manifest_commit",
+    "manifest_url",
+    "model",
+    "schema_version",
+    "tag"
+  ],
+  "prepare": [
+    {
+      "name": "sync",
+      "script_sha256": "a8104c0e3022e61cf23c057a038df288483c944706acf64db3f85b1c027d68b8",
+      "tree": "src",
+      "variables": [
+        "COMMIT",
+        "MANIFEST_URL",
+        "TAG"
+      ]
+    },
+    {
+      "name": "vendor",
+      "script_sha256": "aee377bd49f28cb7201e2536bb1ee3973d395f9d26251d3bd1e0e57428aaed92",
+      "tree": "src",
+      "variables": [
+        "DEVICE",
+        "TAG"
+      ]
+    },
+    {
+      "name": "compile",
+      "script_sha256": "ca9941bc2978a7dbb1eae9a2ca57beea365196a727a423dc854ce5f5bca59fbd",
+      "tree": "src",
+      "variables": [
+        "BUILD_NUMBER",
+        "DEVICE"
+      ]
+    }
+  ]
+}
