@@ -172,6 +172,63 @@ class ReleaseBumpTests(unittest.TestCase):
                 run.ensure_compiled()
 
 
+class CompileGuardTests(unittest.TestCase):
+    """Only `./build.sh prepare` syncs, extracts vendor files and compiles; a build only signs."""
+
+    def main(self, directory, *argv):
+        root, cache, secrets = (Path(directory) / name for name in ('root', 'cache', 'secrets'))
+        (root / 'config').mkdir(parents=True)
+        (root / 'config/grapheneos.json').write_text(json.dumps(GOOD))
+        (root / 'keys').mkdir()
+        (root / 'keys/grapheneos_allowed_signers').write_text('')
+        secrets.mkdir()
+        (secrets / 'passphrase').write_text(PASSWORD)
+        self.steps = []
+
+        def signing(*args):
+            raise InterruptedError('signing')
+
+        with patch.object(builder, 'ROOT', root), \
+                patch.object(builder.Builder, 'step', lambda run, name, *a, **k: self.steps.append(name)), \
+                patch.object(builder.Builder, 'ensure_keys', signing), \
+                patch.dict(os.environ, {'GRAPHENEOS_CACHE_DIR': str(cache), 'GRAPHENEOS_SECRETS_DIR': str(secrets)}), \
+                contextlib.redirect_stdout(io.StringIO()):
+            builder.main(['build.py', *argv])
+        return self.steps
+
+    def compile(self, directory, tag=GOOD['tag']):
+        run = builder.Builder({**GOOD, 'tag': tag}, Path(directory) / 'cache')
+        run.tree.mkdir(parents=True)
+        (run.tree / '.openfactory-compiled-frankel').write_text(tag + '\n')
+        for path in run.target_files():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b'zip')
+
+    def test_a_build_refuses_a_release_prepare_has_not_compiled(self):
+        for compiled in [None, '2026110700']:
+            with tempfile.TemporaryDirectory() as directory:
+                if compiled:
+                    self.compile(directory, compiled)
+                with patch.object(builder.Builder, 'ensure_source', side_effect=AssertionError('synced')), \
+                        self.assertRaises(SystemExit) as refused:
+                    self.main(directory)
+                self.assertIn('not compiled for the Pixel 10 (frankel)', str(refused.exception.code))
+                self.assertIn('./build.sh prepare', str(refused.exception.code))
+                self.assertEqual(self.steps, [])
+
+    def test_a_build_of_a_compiled_release_goes_straight_to_signing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            self.compile(directory)
+            with self.assertRaisesRegex(InterruptedError, 'signing'):
+                self.main(directory)
+            self.assertEqual(self.steps, [])
+
+    def test_prepare_still_syncs_extracts_and_compiles(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with patch.object(builder, 'secrets_dir', side_effect=AssertionError('prepare needs no keys')):
+                self.assertEqual(self.main(directory, 'prepare'), ['sync', 'vendor', 'compile'])
+
+
 class VerifyAndPackageTests(unittest.TestCase):
     def verify(self, directory, **release):
         run = builder.Builder(GOOD, Path(directory))

@@ -194,8 +194,11 @@ printf '%s\\n' "$TAG" > ".openfactory-vendor-$DEVICE"
         releases = self.tree / 'releases' / self.tag
         return releases / f'{self.device}-target_files.zip', releases / f'{self.device}-otatools.zip'
 
+    def compiled(self):
+        return self.done('compiled') and all(p.is_file() for p in self.target_files())
+
     def ensure_compiled(self):
-        if self.done('compiled') and all(p.is_file() for p in self.target_files()):
+        if self.compiled():
             return
         targets = 'vendorbootimage target-files-package otatools-package'
         if self.device not in NO_VENDOR_KERNEL_BOOT:
@@ -337,12 +340,16 @@ def main(argv):
         fcntl.flock(lock, fcntl.LOCK_EX)
         builder = Builder(config, cache)
         builder.prepare_cache()
-        builder.ensure_source()
-        builder.ensure_vendor()
-        builder.ensure_compiled()
         if prepare_only:
+            builder.ensure_source()
+            builder.ensure_vendor()
+            builder.ensure_compiled()
             print(json.dumps({'prepared': config['device'], 'tag': config['tag']}), flush=True)
             return
+        # Compiling takes hours and needs an operator's resources, not a build slot's.
+        if not builder.compiled():
+            raise SystemExit(f"GrapheneOS {config['tag']} is not compiled for the {config['model']} "
+                f"({config['device']}) in this cache; run ./build.sh prepare for it first")
         builder.redact.append(password)
         keys = secrets / 'keys' / config['device']
         give_to_builder(secrets)
