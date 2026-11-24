@@ -51,7 +51,7 @@ APP_ID = re.compile(r'[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+')
 DISPLAY_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9 .'+-]{0,31}")
 MAX_APPS = 25
 FDROID_SIGNER = ROOT / 'keys/fdroid-repo.sha256'
-# A compile needs about 250 GiB while it runs; the copied tree shares extents.
+# A compile needs about 250 GiB while it runs (stock or variant; a variant's copied tree shares extents).
 COMPILE_FREE_BYTES = 300 * 1024 ** 3
 # always: a filesystem without reflinks fails here instead of copying ~140 GiB.
 REFLINK = '--reflink=always'
@@ -305,16 +305,21 @@ printf '%s\\n' "$TAG" > ".openfactory-vendor-$DEVICE"
     def compiled(self):
         return self.done('compiled') and all(p.is_file() for p in self.target_files())
 
-    def ensure_compiled(self, min_free=None):
+    def ensure_compiled(self):
         if self.compiled():
             return
         targets = 'vendorbootimage target-files-package otatools-package'
         if self.device not in NO_VENDOR_KERNEL_BOOT:
             targets = 'vendorbootimage vendorkernelbootimage target-files-package otatools-package'
         with compile_lock(self.cache):
-            if min_free and (free := shutil.disk_usage(self.tree).free) < min_free:
-                raise RuntimeError(f'Compiling needs {min_free // 1024 ** 3} GiB free beside {self.tree}; '
-                    f'{free // 1024 ** 3} GiB is free')
+            # The compile deletes out/ first anyway; deleting it now lets its space count as free.
+            if (self.tree / 'out').is_dir() and not (self.tree / 'out').is_symlink():
+                shutil.rmtree(self.tree / 'out')
+            free = shutil.disk_usage(self.tree).free
+            if free < COMPILE_FREE_BYTES:
+                raise RuntimeError(f'Compiling GrapheneOS needs {COMPILE_FREE_BYTES // 1024 ** 3} GiB free on the disk '
+                    f'holding {self.tree}, but {free // 1024 ** 3} GiB is free; refusing to start a compile that '
+                    'could fill the build disk')
             self.step('compile', f'''
 rm -rf out
 source build/envsetup.sh >/dev/null
@@ -608,7 +613,7 @@ def ensure_variant_compiled(stock, variant_dir=VARIANT_DIR):
         subprocess.run(['cp', '-a', REFLINK, *entries, str(variant.tree)], check=True)
         apply_variant(variant, variant_dir)
         check_mentions(variant.tree, variant_dir)
-        variant.ensure_compiled(min_free=COMPILE_FREE_BYTES)
+        variant.ensure_compiled()
         check_compiled_variant(variant, variant_dir)
         for old in target_files.parent.parent.glob('*'):
             if old.name != stock.tag:

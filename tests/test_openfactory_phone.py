@@ -5,7 +5,6 @@ from pathlib import Path
 import os
 import shutil
 import tempfile
-import types
 import unittest
 from unittest.mock import patch
 import xml.etree.ElementTree as ElementTree
@@ -295,15 +294,6 @@ class CompileTests(unittest.TestCase):
             with builder.compile_lock(cache):
                 self.assertEqual(lock.stat().st_mode & 0o777, 0o600)
             self.assertEqual(target.read_text(), 'keep')
-
-    def test_the_variant_compile_refuses_without_300_gib_free(self):
-        with tempfile.TemporaryDirectory() as directory:
-            run = builder.Builder(STOCK, Path(directory) / 'cache')
-            run.tree.mkdir(parents=True)
-            with patch.object(builder.Builder, 'step', side_effect=AssertionError('compiled')), \
-                    patch.object(builder.shutil, 'disk_usage', return_value=types.SimpleNamespace(free=10)):
-                with self.assertRaisesRegex(RuntimeError, '300 GiB free'):
-                    run.ensure_compiled(min_free=builder.COMPILE_FREE_BYTES)
 
     def test_a_build_refuses_until_prepare_compiled_the_variant(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -1,4 +1,5 @@
 import contextlib
+import fcntl
 import hashlib
 import importlib.util
 import io
@@ -8,6 +9,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import types
 import unittest
 from unittest.mock import patch
 import zipfile
@@ -155,7 +157,8 @@ class ReleaseBumpTests(unittest.TestCase):
             bumped = builder.Builder({**GOOD, 'tag': '2026112000', 'manifest_commit': 'b' * 40}, cache)
             self.assertEqual(bumped.tree, old.tree)
             steps = []
-            with patch.object(bumped, 'step', lambda name, *a, **k: steps.append(name)):
+            with patch.object(bumped, 'step', lambda name, *a, **k: steps.append(name)), \
+                    patch.object(builder, 'COMPILE_FREE_BYTES', 0):
                 bumped.ensure_source()
                 bumped.ensure_vendor()
                 bumped.ensure_compiled()
@@ -200,7 +203,7 @@ class CompileGuardTests(unittest.TestCase):
         def signing(*args):
             raise InterruptedError('signing')
 
-        with patch.object(builder, 'ROOT', root), \
+        with patch.object(builder, 'ROOT', root), patch.object(builder, 'COMPILE_FREE_BYTES', 0), \
                 patch.object(builder.Builder, 'step', lambda run, name, *a, **k: self.steps.append(name)), \
                 patch.object(builder.Builder, 'ensure_keys', signing), \
                 patch.dict(os.environ, {'GRAPHENEOS_CACHE_DIR': str(cache), 'GRAPHENEOS_SECRETS_DIR': str(secrets)}), \
@@ -289,6 +292,40 @@ class CompileGuardTests(unittest.TestCase):
                 'A host prepare loop holds this cache; run this after that loop finishes')
             self.assertEqual(self.steps, [])
             self.assertEqual(marker.read_text(), f'{host.pid}\n')  # the loop's pid is left as it was
+
+
+class SpaceGuardTests(unittest.TestCase):
+    """Every compile, stock or variant, needs COMPILE_FREE_BYTES free once its own out/ is gone."""
+
+    def compile(self, directory, free):
+        run = builder.Builder(GOOD, Path(directory) / 'cache')
+        (run.tree / 'out/soong').mkdir(parents=True)
+        (run.tree / 'out/soong/build.ninja').write_bytes(b'left by a failed compile')
+        lock = run.cache.parent / '.android-compile.lock'
+        steps, out_present = [], []
+
+        def usage(path):
+            with lock.open('rb') as other:  # measured while this compile holds the host-wide lock
+                with self.assertRaises(BlockingIOError):
+                    fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            out_present.append((run.tree / 'out').exists())
+            return types.SimpleNamespace(free=free)
+
+        with patch.object(builder.shutil, 'disk_usage', usage), \
+                patch.object(run, 'step', lambda name, *a, **k: steps.append(name)):
+            run.ensure_compiled()
+        self.assertEqual(out_present, [False])
+        return steps
+
+    def test_a_stock_compile_refuses_without_enough_free_space(self):
+        with tempfile.TemporaryDirectory() as directory, self.assertRaisesRegex(RuntimeError,
+                r'needs 300 GiB free .* but 299 GiB is free') as raised:
+            self.compile(directory, builder.COMPILE_FREE_BYTES - 1024 ** 3)
+        self.assertIn(directory, str(raised.exception))
+
+    def test_a_stock_compile_starts_with_enough_free_space_counting_its_own_out(self):
+        with tempfile.TemporaryDirectory() as directory:
+            self.assertEqual(self.compile(directory, builder.COMPILE_FREE_BYTES), ['compile'])
 
 
 class VerifyAndPackageTests(unittest.TestCase):

@@ -37,7 +37,10 @@ and runs every upstream step as the `of-grapheneos` account through `setpriv`
 cache keeps one source tree (`src`, about 140 GiB) and moves it in place to each
 newly pinned release, so a release bump fetches only what changed; compiled
 output of earlier releases is deleted. Expect about 250 GiB more while
-compiling and 32 GiB of RAM or more. Set `GRAPHENEOS_JOBS` to limit compile
+compiling and 32 GiB of RAM or more. Each compile waits for the host-wide lock
+`.android-compile.lock` beside the cache, deletes its own leftover `out/`, and
+refuses to start with less than 300 GiB free on that disk, so it cannot fill a
+build disk other compiles share. Set `GRAPHENEOS_JOBS` to limit compile
 parallelism. Pixels pinned to different release tags at the same time would
 move the one tree back and forth; that needs a shared repo mirror first.
 

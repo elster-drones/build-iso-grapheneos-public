@@ -79,7 +79,8 @@ def run_main(directory, config, argv=('build.py',), warm=True, step=None):
     secrets.mkdir()
     (secrets / 'passphrase').write_text(PASSWORD + '\n')
     steps, output = [], io.StringIO()
-    with patch.object(builder, 'ROOT', root), \
+    # The temporary disk is far smaller than a build disk; test_builder covers the free-space refusal.
+    with patch.object(builder, 'ROOT', root), patch.object(builder, 'COMPILE_FREE_BYTES', 0), \
             patch.object(builder.Builder, 'step', step or fake_step(steps)), \
             patch.object(builder.subprocess, 'check_output', return_value=b'c' * 40), \
             patch.object(builder.shutil, 'which', return_value=None), \
