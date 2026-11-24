@@ -27,6 +27,7 @@ import pwd
 import re
 import shlex
 import shutil
+import stat
 import subprocess
 import sys
 import time
@@ -124,15 +125,24 @@ def run_tool(home, argv, *, cwd, stdin=None, ok=(0,)):
 
 
 @contextlib.contextmanager
-def compile_lock(cache):
-    """One Android compile at a time on this host; other OS caches beside this one share the lock."""
-    with (cache.parent / '.android-compile.lock').open('a') as lock:
+def locked(path, waiting=None):
+    """Hold an exclusive flock on path, refusing a symlink or anything but a regular file there."""
+    descriptor = os.open(path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+    with os.fdopen(descriptor, 'rb') as lock:
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            raise RuntimeError(f'{path} is not a regular file; refusing to lock it')
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            print('Waiting for another Android compile on this host to finish', flush=True)
+            if waiting:
+                print(waiting, flush=True)
             fcntl.flock(lock, fcntl.LOCK_EX)
         yield
+
+
+def compile_lock(cache):
+    """One Android compile at a time on this host; other OS caches beside this one share the lock."""
+    return locked(cache.parent / '.android-compile.lock', 'Waiting for another Android compile on this host to finish')
 
 
 def give_to_builder(*paths, only_if_needed=False):
@@ -214,6 +224,9 @@ class Builder:
         self.tree.mkdir(exist_ok=True)
         # The synced tree is ~140 GiB; re-owning it every build would take minutes.
         give_to_builder(self.tree, only_if_needed=True)
+        # An OpenFactory Phone compile or signing killed midway leaves up to ~250 GiB behind.
+        for stale in [self.cache / VARIANT / 'tree', *(self.cache / VARIANT).glob('sign-*')]:
+            shutil.rmtree(stale, ignore_errors=True)
 
     def prepare(self, then=None):
         """Sync, extract vendor files and compile, then run then(self): hours under the cache lock.
@@ -543,15 +556,28 @@ def check_compiled_variant(variant, variant_dir=VARIANT_DIR):
         raise ValueError('The compiled OpenFactory Phone is not branded: ' + '; '.join(problems))
 
 
+def canvas_size(tree, device):
+    """The boot animation canvas the device's vendor makefile selects in branding/Android.bp."""
+    makefile = tree / 'vendor/google_devices' / device / f'{device}.mk'
+    found = re.search(r'soong_config_set,\s*bootanimation_zip,\s*canvas_size,\s*(\d+)',
+        makefile.read_text() if makefile.is_file() else '')
+    if not found:
+        raise ValueError(f'No boot animation canvas_size for {device} in {makefile}')
+    return found.group(1)
+
+
 def ensure_variant_compiled(stock, variant_dir=VARIANT_DIR):
     """Compile OpenFactory Phone for (tag, device) once, in a patched reflink copy of the stock tree."""
     if variant_compiled(stock.cache, stock.config, variant_dir):
         return
+    canvas = canvas_size(stock.tree, stock.device)
+    if not (variant_dir / f'files/branding/bootanimation/{canvas}.zip').is_file():
+        raise ValueError(f'No OpenFactory Phone boot animation for canvas {canvas} ({stock.device}); add '
+            f'files/branding/bootanimation/{canvas}.zip to the variant before compiling it')
     variant_digest = variant_sha256(variant_dir)
     target_files, otatools, marker = variant_outputs(stock.cache, stock.config)
     variant = Builder(stock.config, stock.cache)
     variant.tree, variant.logs = marker.parent / 'tree', marker.parent / 'logs'
-    shutil.rmtree(variant.tree, ignore_errors=True)  # left behind by an interrupted run
     variant.logs.mkdir(parents=True, exist_ok=True)
     variant.tree.mkdir()
     try:
@@ -745,12 +771,30 @@ if [ -n "$OVERLAY" ]; then "$BIN/aapt2" dump strings "$OVERLAY" > overlay.txt; f
     return {'apps': True, 'branding': True, 'name_overlay': True}
 
 
-def build_variant(stock, keys, password, variant_dir=VARIANT_DIR):
+def fetch_apps(cache, config, variant_dir=VARIANT_DIR):
+    """The config's F-Droid apps, verified and kept by SHA-256 in cache/fdroid, fetched before the cache lock.
+
+    Returns ([], {}) when there is nothing to fetch or the variant is not compiled;
+    the guard under the cache lock then refuses the build.
+    """
+    if not config['apps'] or not variant_compiled(cache, config, variant_dir):
+        return [], {}
+    directory = cache / 'fdroid'
+    directory.mkdir(exist_ok=True)
+    stock = Builder(config, cache)
+    with locked(directory / '.lock'):
+        deadline = time.monotonic() + fdroid.DEADLINE
+        index = fdroid.fetch_index(directory, lambda jar: verify_jar(stock, jar), fdroid.pinned_signer(FDROID_SIGNER),
+            deadline)
+        apps = fdroid.choose(index, config['apps'], build_sdk(variant_outputs(cache, config)[0]))
+        return apps, fdroid.download_apks(directory, apps, deadline)
+
+
+def build_variant(stock, keys, password, apps, apks, variant_dir=VARIANT_DIR):
     """Sign OpenFactory Phone for one owner in a scratch tree; the cached outputs and src are only read."""
     config, cache = stock.config, stock.cache
     *compiled, _marker = variant_outputs(cache, config)
     scratch = cache / VARIANT / f'sign-{stock.device}'
-    shutil.rmtree(scratch, ignore_errors=True)
     releases = scratch / 'releases' / stock.tag
     releases.mkdir(parents=True)
     try:
@@ -761,12 +805,6 @@ def build_variant(stock, keys, password, variant_dir=VARIANT_DIR):
         for name in ('script', 'prebuilts'):
             (scratch / name).symlink_to(stock.tree / name)
         sdk = build_sdk(target_files)
-        apps = []
-        if config['apps']:
-            index = fdroid.fetch_index(cache / 'fdroid', lambda jar: verify_jar(stock, jar),
-                fdroid.pinned_signer(FDROID_SIGNER))
-            apps = fdroid.choose(index, config['apps'], sdk)
-        apks = fdroid.download_apks(cache / 'fdroid', apps)
         title = config['display_name'] and welcome_title(config['display_name'])
         overlay = title and build_name_overlay(stock, title, target_files, otatools, sdk, scratch / 'overlay')
         inject(target_files, apks, overlay, scratch / 'stage')
@@ -797,6 +835,8 @@ def main(argv):
     variant = config.get('variant')
     if not prepare_only:
         secrets, password = secrets_dir(cache)
+        # Network fetches stay outside the cache lock; injection, signing and readback hold it.
+        apps, apks = fetch_apps(cache, config) if variant else ([], {})
     with (cache / '.lock').open('w') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         builder = Builder(config, cache)
@@ -818,7 +858,7 @@ def main(argv):
         give_to_builder(secrets)
         builder.ensure_keys(keys, password)
         if variant:
-            manifest, fingerprint = build_variant(builder, keys, password)
+            manifest, fingerprint = build_variant(builder, keys, password, apps, apks)
         else:
             release = builder.sign(keys, password)
             try:

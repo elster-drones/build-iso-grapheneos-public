@@ -81,9 +81,11 @@ recompiles. Every compile, stock or variant, takes the host-wide lock
 `.android-compile.lock` in the cache's parent directory.
 
 `./build.sh` with this config never compiles: it refuses unless both compiles
-exist. It fetches F-Droid's `entry.jar`, verifies it with the tree's `jarsigner`
-against the pinned signer in `keys/fdroid-repo.sha256` (F-Droid's published repo
-key), then fetches `index-v2.json` and each APK by SHA-256 and size. Per app it
+exist. Before it takes the cache lock, and within five minutes, it fetches
+F-Droid's `entry.jar`, verifies it with the tree's `jarsigner` against the
+pinned signer in `keys/fdroid-repo.sha256` (F-Droid's published repo key),
+refuses an index older than one already seen or than 30 days, then fetches
+`index-v2.json` and each APK by SHA-256 and size into `GRAPHENEOS_CACHE_DIR/fdroid`. Per app it
 takes the newest stable version from the app's preferred signer that supports
 the build's SDK and arm64 (or has no native code); unknown IDs and 32-bit-only
 apps fail. The APKs, unmodified and `PRESIGNED` so F-Droid can update them, their

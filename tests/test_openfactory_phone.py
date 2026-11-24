@@ -2,6 +2,7 @@
 import hashlib
 import json
 from pathlib import Path
+import os
 import shutil
 import tempfile
 import types
@@ -82,6 +83,9 @@ def stock_tree(cache):
         '<resources>\n    <string name="hello">Hello GrapheneOS</string>\n</resources>\n')
     (tree / 'branding/bootanimation').mkdir(parents=True)
     (tree / 'branding/bootanimation/1080.zip').write_bytes(b'stock animation')
+    (tree / 'vendor/google_devices/frankel').mkdir(parents=True)
+    (tree / 'vendor/google_devices/frankel/frankel.mk').write_text(
+        '$(call soong_config_set,bootanimation_zip,canvas_size,1080)\n')
     for name in ('script', 'prebuilts'):
         (tree / name).mkdir()
     return tree
@@ -225,6 +229,47 @@ class CompileTests(unittest.TestCase):
             *_outputs, marker = builder.variant_outputs(stock.cache, STOCK)
             self.assertFalse(marker.exists())
             self.assertFalse((marker.parent / 'tree').exists())
+
+    def test_a_canvas_without_a_boot_animation_is_refused_before_copying(self):
+        with tempfile.TemporaryDirectory() as directory:
+            stock = builder.Builder(STOCK, Path(directory) / 'cache')
+            stock_tree(stock.cache)
+            (stock.tree / 'vendor/google_devices/frankel/frankel.mk').write_text(
+                '$(call soong_config_set,bootanimation_zip,canvas_size,1344)\n')
+            with patch.object(builder.subprocess, 'run', side_effect=AssertionError('copied')):
+                with self.assertRaisesRegex(ValueError, 'No OpenFactory Phone boot animation for canvas 1344'):
+                    builder.ensure_variant_compiled(stock, variant_dir_with(directory, GREETING_PATCH))
+            self.assertFalse((stock.cache / 'openfactory-phone/tree').exists())
+
+    def test_prepare_cache_removes_a_variant_tree_or_signing_tree_left_by_a_killed_run(self):
+        with tempfile.TemporaryDirectory() as directory:
+            run = builder.Builder(STOCK, Path(directory) / 'cache')
+            for stale in ('tree/frameworks', 'sign-frankel/releases'):
+                (run.cache / 'openfactory-phone' / stale).mkdir(parents=True)
+            (run.cache / 'openfactory-phone/releases').mkdir()
+            with patch.object(builder, 'ROOT', Path(directory)), patch.object(builder.shutil, 'copy2'):
+                run.prepare_cache()
+            self.assertEqual(sorted(path.name for path in (run.cache / 'openfactory-phone').iterdir()), ['releases'])
+
+    def test_the_compile_lock_refuses_a_symlink_or_a_non_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cache = Path(directory) / 'cache'
+            lock = Path(directory) / '.android-compile.lock'
+            target = Path(directory) / 'elsewhere'
+            target.write_text('keep')
+            lock.symlink_to(target)
+            with self.assertRaises(OSError):
+                with builder.compile_lock(cache):
+                    pass
+            lock.unlink()
+            os.mkfifo(lock)
+            with self.assertRaisesRegex(RuntimeError, 'not a regular file'):
+                with builder.compile_lock(cache):
+                    pass
+            lock.unlink()
+            with builder.compile_lock(cache):
+                self.assertEqual(lock.stat().st_mode & 0o777, 0o600)
+            self.assertEqual(target.read_text(), 'keep')
 
     def test_the_variant_compile_refuses_without_300_gib_free(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -397,6 +442,14 @@ class ReadbackTests(unittest.TestCase):
 class VariantBuildTests(unittest.TestCase):
     """build_variant end to end, with F-Droid, aapt2 and the signing tools faked."""
 
+    def index_outside_cache_lock(self, cache):
+        def fetch(directory, verify, pinned, deadline):
+            with (cache / '.lock').open('w') as lock:
+                builder.fcntl.flock(lock, builder.fcntl.LOCK_EX | builder.fcntl.LOCK_NB)  # raises if held
+            self.assertTrue((directory / '.lock').is_file())
+            return {'packages': {}}
+        return fetch
+
     def test_signs_in_a_scratch_tree_and_packages_the_variant_manifest(self):
         with tempfile.TemporaryDirectory() as directory:
             cache = Path(directory) / 'cache'
@@ -441,7 +494,8 @@ class VariantBuildTests(unittest.TestCase):
                     (cwd / 'ramdisk.cpio').write_bytes(b'OpenFactory Phone Recovery OpenFactory Phone Fastboot')
 
             with patch.object(builder, 'REFLINK', '--reflink=auto'), \
-                    patch.object(builder.fdroid, 'fetch_index', return_value={'packages': {}}) as fetched, \
+                    patch.object(builder.fdroid, 'fetch_index',
+                        side_effect=self.index_outside_cache_lock(cache)) as fetched, \
                     patch.object(builder.fdroid, 'choose', return_value=apps) as chosen, \
                     patch.object(builder.fdroid, 'download_apks', return_value=apks), \
                     patch.object(builder, 'build_name_overlay', return_value=overlay) as named:

@@ -11,12 +11,16 @@ import hashlib
 import json
 from pathlib import Path
 import re
+import time
 import urllib.request
 import zipfile
 
 REPO = 'https://f-droid.org/repo'
 ARM64 = 'arm64-v8a'
 TIMEOUT = 60
+# The whole fetch (entry, index, APKs) must finish within this; downloads kept so far let a retry resume.
+DEADLINE = 5 * 60
+MAX_AGE_MS = 30 * 24 * 3600 * 1000
 
 
 def pinned_signer(path):
@@ -36,9 +40,11 @@ def certificate_digests(pem):
 def read_entry(jar, jarsigner_status, signer_pem, pinned):
     """entry.json, once jarsigner -strict and the pinned certificate both vouch for it.
 
-    jarsigner -strict exits 4 when the only finding is that the signer is
-    self-signed, which F-Droid's repo key is; the pin replaces the chain.
-    Unsigned entries, bad digests and unknown signers all fail.
+    jarsigner -strict exits 4 for a certificate chain it cannot validate: F-Droid's
+    self-signed repo key, but also an expired certificate. It exits 0 for a jar
+    that carries no signature at all. So the exit status only rules out bad
+    digests (1) and unsigned entries (16); the pin is what decides, and a jar with
+    no signer or another signer fails it.
     """
     if jarsigner_status not in (0, 4):
         raise ValueError(f'F-Droid entry.jar failed signature verification (jarsigner exit {jarsigner_status})')
@@ -50,27 +56,41 @@ def read_entry(jar, jarsigner_status, signer_pem, pinned):
             raise ValueError('F-Droid entry.jar is malformed')
         entry = json.loads(archive.read('entry.json'))
     index = entry.get('index') or {}
-    if (index.get('name') != '/index-v2.json' or not re.fullmatch(r'[0-9a-f]{64}', str(index.get('sha256', '')))
+    if (not isinstance(entry.get('timestamp'), int) or index.get('name') != '/index-v2.json' or not re.fullmatch(r'[0-9a-f]{64}', str(index.get('sha256', '')))
             or not isinstance(index.get('size'), int)):
         raise ValueError('F-Droid entry.json does not describe index-v2.json')
     return entry
 
 
-def download(url, destination, sha256, size):
+def _time_left(deadline):
+    """Seconds a network operation may still take, or a loud failure once the deadline has passed."""
+    left = deadline - time.monotonic()
+    if left <= 0:
+        raise TimeoutError(f'Fetching from F-Droid took longer than {DEADLINE // 60} minutes; '
+            'verified downloads are kept, so a retry continues from them')
+    return min(TIMEOUT, left)
+
+
+def download(url, destination, sha256, size, deadline=None):
     """Fetch url to destination unless a verified copy is already there."""
+    deadline = deadline or time.monotonic() + DEADLINE
     destination = Path(destination)
     if destination.is_file() and destination.stat().st_size == size and _sha256(destination) == sha256:
         return destination
     destination.parent.mkdir(parents=True, exist_ok=True)
     temporary = destination.with_name(destination.name + '.part')
     hasher, length = hashlib.sha256(), 0
-    with urllib.request.urlopen(url, timeout=TIMEOUT) as response, temporary.open('wb') as output:
-        while chunk := response.read(1 << 20):
-            length += len(chunk)
-            if length > size:
-                break
-            hasher.update(chunk)
-            output.write(chunk)
+    try:
+        with urllib.request.urlopen(url, timeout=_time_left(deadline)) as response, temporary.open('wb') as output:
+            while (chunk := response.read(1 << 20)) and _time_left(deadline):
+                length += len(chunk)
+                if length > size:
+                    break
+                hasher.update(chunk)
+                output.write(chunk)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
     if length != size or hasher.hexdigest() != sha256:
         temporary.unlink()
         raise ValueError(f'{url} does not match the size and SHA-256 its signed F-Droid index gives')
@@ -78,16 +98,33 @@ def download(url, destination, sha256, size):
     return destination
 
 
-def fetch_index(directory, verify_jar, pinned):
+def check_fresh(directory, timestamp, now_ms=None):
+    """Refuse an entry older than one already seen here (a replay) or older than 30 days."""
+    seen = Path(directory) / 'entry-timestamp'
+    last = int(seen.read_text()) if seen.is_file() else 0
+    if timestamp < last:
+        raise ValueError(f'F-Droid served an index older than one already seen ({timestamp} < {last}); '
+            'refusing a replayed index')
+    if timestamp < (now_ms or time.time() * 1000) - MAX_AGE_MS:
+        raise ValueError('F-Droid served an index more than 30 days old; refusing a stale index')
+    return seen
+
+
+def fetch_index(directory, verify_jar, pinned, deadline=None):
     """The verified index-v2.json. verify_jar(path) returns (jarsigner -strict exit, keytool -rfc text)."""
+    deadline = deadline or time.monotonic() + DEADLINE
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
     jar = directory / 'entry.jar'
-    with urllib.request.urlopen(f'{REPO}/entry.jar', timeout=TIMEOUT) as response:
+    with urllib.request.urlopen(f'{REPO}/entry.jar', timeout=_time_left(deadline)) as response:
         jar.write_bytes(response.read(1 << 20))
-    entry = read_entry(jar, *verify_jar(jar), pinned)['index']
-    path = download(REPO + entry['name'], directory / 'index-v2.json', entry['sha256'], entry['size'])
-    return json.loads(path.read_text())
+    entry = read_entry(jar, *verify_jar(jar), pinned)
+    seen = check_fresh(directory, entry['timestamp'])
+    path = download(REPO + entry['index']['name'], directory / 'index-v2.json', entry['index']['sha256'],
+        entry['index']['size'], deadline)
+    index = json.loads(path.read_text())
+    seen.write_text(f"{entry['timestamp']}\n")
+    return index
 
 
 def _sha256(path):
@@ -129,11 +166,12 @@ def choose(index, app_ids, sdk):
     return chosen
 
 
-def download_apks(directory, chosen):
+def download_apks(directory, chosen, deadline=None):
     """Each chosen APK, by SHA-256, as {package: path}."""
+    deadline = deadline or time.monotonic() + DEADLINE
     apks = Path(directory) / 'apks'
     return {app['package']: download(REPO + app['file'], apks / f"{app['apk_sha256']}.apk", app['apk_sha256'],
-        app['size']) for app in chosen}
+        app['size'], deadline) for app in chosen}
 
 
 def manifest_entry(app):

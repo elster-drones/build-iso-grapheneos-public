@@ -22,8 +22,8 @@ anything here recompiles every Pixel at its next prepare.
   missing fails the compile.
   - `branding/bootanimation/1080.zip`: the boot animation for 1080-pixel canvases
     (frankel and rango). Pixels with another canvas size (blazer 1280, mustang
-    1344) need their own `<size>.zip` here first; until then their compile fails
-    the boot animation check rather than ship the GrapheneOS animation.
+    1344) need their own `<size>.zip` here first; until then prepare refuses
+    them before copying or compiling anything.
   - `packages/apps/SetupWizard2/res/drawable/grapheneos_icon.xml`: the setup
     wizard icon, the OpenFactory rings mark reduced for 64 dp.
 - `kept-mentions.txt`: every line still naming GrapheneOS in the scanned

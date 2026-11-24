@@ -4,6 +4,7 @@ import importlib.util
 import json
 from pathlib import Path
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 import zipfile
@@ -17,6 +18,9 @@ PINNED = fdroid.pinned_signer(ROOT / 'keys/fdroid-repo.sha256')
 DEVELOPER, OTHER = 'd' * 64, 'e' * 64
 # keytool -printcert -rfc shape; the body is any DER, its SHA-256 is what is pinned.
 PEM = '-----BEGIN CERTIFICATE-----\n{}\n-----END CERTIFICATE-----\n'
+NOW_MS = int(time.time() * 1000)
+DER = b'pinned-der'
+SIGNER = PEM.format(base64.b64encode(DER).decode())
 
 
 def version(code, *, signer=DEVELOPER, abis=None, min_sdk=24, beta=False, anti=None):
@@ -70,8 +74,8 @@ class EntryTests(unittest.TestCase):
     def entry_jar(self, directory, entry=None, extra=()):
         jar = Path(directory) / 'entry.jar'
         with zipfile.ZipFile(jar, 'w') as archive:
-            archive.writestr('entry.json', json.dumps(entry or {'index': {'name': '/index-v2.json',
-                'sha256': 'a' * 64, 'size': 10}}))
+            archive.writestr('entry.json', json.dumps(entry or {'timestamp': NOW_MS, 'index': {
+                'name': '/index-v2.json', 'sha256': 'a' * 64, 'size': 10}}))
             for name in extra:
                 archive.writestr(name, b'x')
         return jar
@@ -96,9 +100,38 @@ class EntryTests(unittest.TestCase):
         der = b'pinned-der'
         pem = PEM.format(base64.b64encode(der).decode())
         with tempfile.TemporaryDirectory() as directory:
-            jar = self.entry_jar(directory, {'index': {'name': '/index-v1.json', 'sha256': 'a' * 64, 'size': 1}})
-            with self.assertRaisesRegex(ValueError, 'index-v2'):
-                fdroid.read_entry(jar, 4, pem, hashlib.sha256(der).hexdigest())
+            for entry in [{'timestamp': NOW_MS, 'index': {'name': '/index-v1.json', 'sha256': 'a' * 64, 'size': 1}},
+                    {'index': {'name': '/index-v2.json', 'sha256': 'a' * 64, 'size': 1}}]:
+                jar = self.entry_jar(directory, entry)
+                with self.assertRaisesRegex(ValueError, 'index-v2'):
+                    fdroid.read_entry(jar, 4, pem, hashlib.sha256(der).hexdigest())
+
+    def test_a_replayed_or_month_old_index_is_refused_and_a_fresh_one_remembered(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo, cache = Path(directory) / 'repo', Path(directory) / 'cache'
+            repo.mkdir()
+            index = json.dumps({'packages': {}}).encode()
+
+            def publish(timestamp):
+                self.entry_jar(repo, {'timestamp': timestamp, 'index': {'name': '/index-v2.json',
+                    'sha256': hashlib.sha256(index).hexdigest(), 'size': len(index)}})
+                (repo / 'index-v2.json').write_bytes(index)
+
+            def fetch():
+                return fdroid.fetch_index(cache, lambda jar: (4, SIGNER), hashlib.sha256(DER).hexdigest())
+
+            with patch.object(fdroid, 'REPO', repo.as_uri()):
+                publish(NOW_MS)
+                self.assertEqual(fetch(), {'packages': {}})
+                self.assertEqual((cache / 'entry-timestamp').read_text().strip(), str(NOW_MS))
+                self.assertEqual(fetch(), {'packages': {}})
+                publish(NOW_MS - 1000)
+                with self.assertRaisesRegex(ValueError, 'replayed'):
+                    fetch()
+                self.assertEqual((cache / 'entry-timestamp').read_text().strip(), str(NOW_MS))
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(ValueError, '30 days'):
+                fdroid.check_fresh(directory, NOW_MS - fdroid.MAX_AGE_MS - 1000)
 
     def test_the_pinned_fingerprint_is_f_droids_repo_key(self):
         self.assertEqual(PINNED, '43238d512c1e5eb2d6569f4a3afbf5523418b82e0a3ed1552770abb9a9c9ccab')
@@ -119,6 +152,8 @@ class DownloadTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, 'does not match'):
                     fdroid.download(source.as_uri(), Path(directory) / 'other.apk', *wrong)
             self.assertFalse((Path(directory) / 'other.apk').exists())
+            with self.assertRaisesRegex(TimeoutError, 'longer than 5 minutes'):
+                fdroid.download(source.as_uri(), Path(directory) / 'late.apk', sha256, 9, time.monotonic() - 1)
             self.assertFalse(list(Path(directory).rglob('*.part')))
 
 
