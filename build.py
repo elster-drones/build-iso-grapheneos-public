@@ -161,17 +161,22 @@ class Builder:
     def prepare(self):
         """Sync, extract vendor files and compile: hours under the cache lock.
 
-        The platform admits no build while the pid in `.openfactory-preparing`
-        lives, so none waits out its slot on this lock; a dead pid is ignored.
+        The platform admits no build while `.openfactory-preparing` is locked,
+        so none waits out its slot on the cache lock. The kernel drops the lock
+        with this process however it ends; the pid is only for operators.
         """
         marker = self.cache / '.openfactory-preparing'
-        marker.write_text(f'{os.getpid()}\n')
-        try:
-            self.ensure_source()
-            self.ensure_vendor()
-            self.ensure_compiled()
-        finally:
-            marker.unlink(missing_ok=True)
+        with marker.open('w') as held:
+            os.fchmod(held.fileno(), 0o644)  # the platform's API account opens it read-only
+            fcntl.flock(held, fcntl.LOCK_EX)
+            held.write(f'{os.getpid()}\n')
+            held.flush()
+            try:
+                self.ensure_source()
+                self.ensure_vendor()
+                self.ensure_compiled()
+            finally:
+                marker.unlink(missing_ok=True)
 
     def ensure_source(self):
         marker = self.tree / '.openfactory-manifest'
