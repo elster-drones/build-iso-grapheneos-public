@@ -7,3 +7,4 @@ keys/*/
 *.pem
 *.gpg
 id_ed25519*
+.android-compile.lock

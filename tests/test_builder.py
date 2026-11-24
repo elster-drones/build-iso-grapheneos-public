@@ -133,14 +133,16 @@ class PrivilegeTests(unittest.TestCase):
 class ReleaseBumpTests(unittest.TestCase):
     def test_a_new_release_moves_the_one_tree_and_redoes_only_release_steps(self):
         with tempfile.TemporaryDirectory() as directory:
-            old = builder.Builder(GOOD, Path(directory))
-            old.tree.mkdir()
+            # The compile lock lives beside the cache, so keep the cache below the temporary directory.
+            cache = Path(directory) / 'cache'
+            old = builder.Builder(GOOD, cache)
+            old.tree.mkdir(parents=True)
             (old.tree / '.openfactory-vendor-frankel').write_text(GOOD['tag'] + '\n')
             (old.tree / '.openfactory-compiled-frankel').write_text(GOOD['tag'] + '\n')
             for path in old.target_files():
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_bytes(b'zip')
-            bumped = builder.Builder({**GOOD, 'tag': '2026112000', 'manifest_commit': 'b' * 40}, Path(directory))
+            bumped = builder.Builder({**GOOD, 'tag': '2026112000', 'manifest_commit': 'b' * 40}, cache)
             self.assertEqual(bumped.tree, old.tree)
             steps = []
             with patch.object(bumped, 'step', lambda name, *a, **k: steps.append(name)):

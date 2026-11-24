@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- OpenFactory Phone mark: the OpenFactory rings reduced for a 64dp icon. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="64dp"
+    android:height="64dp"
+    android:tint="?android:attr/textColorPrimary"
+    android:viewportWidth="2000"
+    android:viewportHeight="2000">
+    <path
+        android:strokeColor="#000000"
+        android:strokeWidth="28"
+        android:pathData="M1080,1000a100,100 0,1 1,200,0a100,100 0,1 1,-200,0z" />
+    <path
+        android:strokeColor="#000000"
+        android:strokeWidth="28"
+        android:pathData="M957.5,1000a200,200 0,1 1,400,0a200,200 0,1 1,-400,0z" />
+    <path
+        android:strokeColor="#000000"
+        android:strokeWidth="28"
+        android:pathData="M835,1000a300,300 0,1 1,600,0a300,300 0,1 1,-600,0z" />
+    <path
+        android:strokeColor="#000000"
+        android:strokeWidth="28"
+        android:pathData="M712.5,1000a400,400 0,1 1,800,0a400,400 0,1 1,-800,0z" />
+    <path
+        android:strokeColor="#000000"
+        android:strokeWidth="28"
+        android:pathData="M590,1000a500,500 0,1 1,1000,0a500,500 0,1 1,-1000,0z" />
+    <path
+        android:strokeColor="#000000"
+        android:strokeWidth="28"
+        android:pathData="M467.5,1000a600,600 0,1 1,1200,0a600,600 0,1 1,-1200,0z" />
+    <path
+        android:strokeColor="#000000"
+        android:strokeWidth="28"
+        android:pathData="M345,1000a700,700 0,1 1,1400,0a700,700 0,1 1,-1400,0z" />
+    <path
+        android:strokeColor="#000000"
+        android:strokeWidth="28"
+        android:pathData="M222.5,1000a800,800 0,1 1,1600,0a800,800 0,1 1,-1600,0z" />
+    <path
+        android:strokeColor="#000000"
+        android:strokeWidth="28"
+        android:pathData="M100,1000a900,900 0,1 1,1800,0a900,900 0,1 1,-1800,0z" />
+    <path
+        android:strokeColor="#000000"
+        android:strokeWidth="24"
+        android:pathData="M1200,1000H1900" />
+    <path
+        android:fillColor="#000000"
+        android:pathData="M1160,1000a40,40 0,1 1,80,0a40,40 0,1 1,-80,0z" />
+</vector>

@@ -1,0 +1,41 @@
+# Mentions of "GrapheneOS" allowed to remain in OpenFactory Phone.
+#
+# build.py scans every AndroidManifest.xml and res/values*/*.xml of the patched tree
+# and fails on any line naming GrapheneOS that is not listed here exactly, as
+# "<path>: <line, trimmed>". A release bump that changes one of these lines fails
+# the compile until the line is reviewed and listed again.
+#
+# Not scanned, and kept as they are (Erik, 2026-11-23): the bundled apps GrapheneOS
+# publishes as prebuilt APKs and names in their own UI: Info, App Store, Auditor,
+# Camera, PDF Viewer, Messaging and Vanadium. Their names, and the GrapheneOS
+# servers they and the OS contact, stay because they accurately name upstream work.
+
+# Says what OpenFactory Phone is (patch 0003).
+packages/apps/SetupWizard2/res/values/strings.xml: <string name="grapheneos_desc">A distinct OS based on GrapheneOS, signed with your own keys.</string>
+
+# Services GrapheneOS runs and OpenFactory Phone keeps as its defaults (Erik, 2026-11-23):
+# the Settings server and proxy labels and the setup wizard texts that name them.
+packages/apps/Settings/res/values/strings_ext.xml: <string name="cert_transparency_dl_grapheneos_server">GrapheneOS server</string>
+packages/apps/Settings/res/values/strings_ext.xml: <string name="conn_checks_grapheneos_server">GrapheneOS server</string>
+packages/apps/Settings/res/values/strings_ext.xml: <string name="geocoder_enabled_grapheneos_server">GrapheneOS server</string>
+packages/apps/Settings/res/values/strings_ext.xml: <string name="network_location_enabled_grapheneos_apple_proxy">GrapheneOS Apple proxy</string>
+packages/apps/Settings/res/values/strings_ext.xml: <string name="psds_enabled_grapheneos_server">GrapheneOS server</string>
+packages/apps/Settings/res/values/strings_ext.xml: <string name="remote_provisioning_enabled_grapheneos_proxy">GrapheneOS proxy</string>
+packages/apps/Settings/res/values/strings_ext.xml: <string name="supl_enabled_grapheneos_proxy">GrapheneOS proxy</string>
+packages/apps/Settings/res/values/strings_ext.xml: <string name="widevine_provisioning_enabled_grapheneos_proxy">GrapheneOS proxy</string>
+packages/apps/SetupWizard2/res/values/strings.xml: <string name="geocoder_enabled_desc">Enable geocoder to allow apps to use a network-based service hosted by GrapheneOS to convert between geographic coordinates and human-readable addresses. Some apps need this for critical functionality.</string>
+packages/apps/SetupWizard2/res/values/strings.xml: <string name="network_location_enabled_desc">Enable network location to determine your location better (such as when indoors) and more efficiently. Nearby wireless signal identifiers will be sent to an Apple server through a GrapheneOS proxy only when network location is being used.</string>
+
+# Features that are GrapheneOS's own work, named as such.
+packages/apps/Settings/res/values/strings_app_exploit_protection.xml: <string name="aep_compat_mode_summary">Improves compatibility by disabling some of the GrapheneOS exploit protections for this app</string>
+
+# Texts that speak of the OS as GrapheneOS. Kept in this first series; candidates for a
+# later patch if every on-device mention of the running OS should say OpenFactory Phone.
+packages/apps/Dialer/java/com/android/incallui/res/values/strings_ext.xml: By continuing to use call recording, you acknowledge that you fully read this and GrapheneOS will not be held liable in any way for any possible consequences should there be any
+packages/apps/Settings/res/values/strings_ext.xml: <string name="app_play_integrity_top_intro">The Play Integrity API allows services to verify properties of a device through their app. Most services check for the device or strong integrity level which requires having the unmodified stock OS on a device licensing Google Mobile Services. Not every app using it will ban using GrapheneOS. GrapheneOS passes the basic integrity level and the miscellaneous checks for licensing, Play Protect, etc. work fine. We recommend leaving feedback for apps using it to ban GrapheneOS asking them to stop banning using a much more secure OS. Apps can use the standard Android hardware attestation API to verify the hardware, OS and app with GrapheneOS.</string>
+packages/apps/Settings/res/values/strings_ext.xml: Submitting the duress password will immediately make the storage contents permanently inaccessible, delete all eSIMs and then power off the device. GrapheneOS will remain installed.
+
+# Source comments, never shown on the phone.
+frameworks/base/core/res/res/values/config.xml: <!-- The GrapheneOS network location provider -->
+frameworks/base/packages/Shell/AndroidManifest.xml: <!--  Permission required for GrapheneOS package state updates -->
+packages/apps/Settings/res/values/config.xml: <!-- GrapheneOS: AOSP provides adaptive Wi-Fi connectivity. This config controls whether to
