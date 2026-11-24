@@ -1,0 +1,24 @@
+Subject: Name the running OS OpenFactory Phone in the duress and Play Integrity texts
+
+OpenFactory Phone, based on GrapheneOS 2026110800.
+
+--- a/packages/apps/Settings/res/values/strings_ext.xml
++++ b/packages/apps/Settings/res/values/strings_ext.xml
+@@ -198,7 +198,7 @@
+     <string name="duress_pwd_pref_title">Duress password</string>
+     <string name="duress_pwd_description">"Duress password can be entered instead of the user password in any place that asks for it, such as the lock screen of any user and any user or work profile password prompt.
+ 
+-Submitting the duress password will immediately make the storage contents permanently inaccessible, delete all eSIMs and then power off the device. GrapheneOS will remain installed.
++Submitting the duress password will immediately make the storage contents permanently inaccessible, delete all eSIMs and then power off the device. OpenFactory Phone will remain installed.
+ 
+ Duress PIN works the same way duress password does."</string>
+     <string name="duress_pwd_enter_pin">Enter duress PIN</string>
+@@ -228,7 +228,7 @@
+     <string name="alt_touchscreen_mode_confirm_button">Confirm</string>
+ 
+     <string name="app_play_integrity_api">Play Integrity API</string>
+-    <string name="app_play_integrity_top_intro">The Play Integrity API allows services to verify properties of a device through their app. Most services check for the device or strong integrity level which requires having the unmodified stock OS on a device licensing Google Mobile Services. Not every app using it will ban using GrapheneOS. GrapheneOS passes the basic integrity level and the miscellaneous checks for licensing, Play Protect, etc. work fine. We recommend leaving feedback for apps using it to ban GrapheneOS asking them to stop banning using a much more secure OS. Apps can use the standard Android hardware attestation API to verify the hardware, OS and app with GrapheneOS.</string>
++    <string name="app_play_integrity_top_intro">The Play Integrity API allows services to verify properties of a device through their app. Most services check for the device or strong integrity level which requires having the unmodified stock OS on a device licensing Google Mobile Services. Not every app using it will ban using OpenFactory Phone. OpenFactory Phone passes the basic integrity level and the miscellaneous checks for licensing, Play Protect, etc. work fine. We recommend leaving feedback for apps using it to ban OpenFactory Phone asking them to stop banning using a much more secure OS. Apps can use the standard Android hardware attestation API to verify the hardware, OS and app with OpenFactory Phone.</string>
+     <string name="app_play_integrity_contact_app_developer">Contact app developer</string>
+     <string name="app_play_integrity_show_usage_notifications">Show usage notifications</string>
+     <string name="app_play_integrity_block_usage_attempts">Block usage attempts</string>

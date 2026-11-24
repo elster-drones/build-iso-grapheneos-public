@@ -16,6 +16,8 @@ anything here recompiles every Pixel at its next prepare.
   - 0004: recovery and fastbootd titles.
   - 0005: the `flash-all.sh` comments, which point to the owner's `INSTALL.txt`
     instead of the GrapheneOS installer.
+  - 0006, 0007: Settings (duress password, Play Integrity) and Dialer (call
+    recording notice) texts that called the running OS GrapheneOS.
 - `files/`: replacements at the same path in the tree. A file whose target is
   missing fails the compile.
   - `branding/bootanimation/1080.zip`: the boot animation for 1080-pixel canvases
