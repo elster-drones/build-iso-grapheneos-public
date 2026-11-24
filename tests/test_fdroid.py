@@ -1,9 +1,12 @@
 import base64
 import hashlib
+import http.server
 import importlib.util
 import json
 from pathlib import Path
+import os
 import tempfile
+import threading
 import time
 import unittest
 from unittest.mock import patch
@@ -155,6 +158,45 @@ class DownloadTests(unittest.TestCase):
             with self.assertRaisesRegex(TimeoutError, 'longer than 5 minutes'):
                 fdroid.download(source.as_uri(), Path(directory) / 'late.apk', sha256, 9, time.monotonic() - 1)
             self.assertFalse(list(Path(directory).rglob('*.part')))
+
+
+class DrippingHandler(http.server.BaseHTTPRequestHandler):
+    """Promises 100 bytes, then sends one every 50 ms (or, for /silent, none)."""
+
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header('Content-Length', '100')
+        self.end_headers()
+        try:
+            for _ in range(100):
+                time.sleep(0.05 if self.path != '/silent' else 5)
+                self.wfile.write(b'x')
+                self.wfile.flush()
+        except OSError:
+            pass
+
+    def log_message(self, *args):
+        pass
+
+
+class DeadlineTests(unittest.TestCase):
+    def test_a_dripping_or_silent_server_cannot_hold_a_download_past_the_deadline(self):
+        server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), DrippingHandler)
+        server.daemon_threads = True
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            with tempfile.TemporaryDirectory() as directory, \
+                    patch.dict(os.environ, {'no_proxy': '127.0.0.1', 'NO_PROXY': '127.0.0.1'}):
+                for path in ('/drip', '/silent'):
+                    started = time.monotonic()
+                    with self.assertRaises(TimeoutError):
+                        fdroid.download(f'http://127.0.0.1:{server.server_port}{path}', Path(directory) / 'app.apk',
+                            'a' * 64, 100, time.monotonic() + 0.5)
+                    self.assertLess(time.monotonic() - started, 1.5, path)
+                self.assertFalse(list(Path(directory).iterdir()))
+        finally:
+            server.shutdown()
+            server.server_close()
 
 
 if __name__ == '__main__':

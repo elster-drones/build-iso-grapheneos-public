@@ -71,6 +71,26 @@ def _time_left(deadline):
     return min(TIMEOUT, left)
 
 
+def _chunks(url, deadline):
+    """The body of url in chunks. Each read returns what one receive brings and may not block past the
+    deadline, so a server dripping bytes cannot hold the fetch beyond it either."""
+    with urllib.request.urlopen(url, timeout=_time_left(deadline)) as response:
+        sock = getattr(getattr(getattr(response, 'fp', None), 'raw', None), '_sock', None)
+        read = getattr(response, 'read1', response.read)
+        while True:
+            if sock is not None:
+                sock.settimeout(_time_left(deadline))
+            try:
+                chunk = read(1 << 20)
+            except TimeoutError:
+                _time_left(deadline)
+                raise
+            if not chunk:
+                return
+            _time_left(deadline)
+            yield chunk
+
+
 def download(url, destination, sha256, size, deadline=None):
     """Fetch url to destination unless a verified copy is already there."""
     deadline = deadline or time.monotonic() + DEADLINE
@@ -81,8 +101,8 @@ def download(url, destination, sha256, size, deadline=None):
     temporary = destination.with_name(destination.name + '.part')
     hasher, length = hashlib.sha256(), 0
     try:
-        with urllib.request.urlopen(url, timeout=_time_left(deadline)) as response, temporary.open('wb') as output:
-            while (chunk := response.read(1 << 20)) and _time_left(deadline):
+        with temporary.open('wb') as output:
+            for chunk in _chunks(url, deadline):
                 length += len(chunk)
                 if length > size:
                     break
@@ -116,8 +136,12 @@ def fetch_index(directory, verify_jar, pinned, deadline=None):
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
     jar = directory / 'entry.jar'
-    with urllib.request.urlopen(f'{REPO}/entry.jar', timeout=_time_left(deadline)) as response:
-        jar.write_bytes(response.read(1 << 20))
+    data = b''
+    for chunk in _chunks(f'{REPO}/entry.jar', deadline):
+        data += chunk
+        if len(data) > 1 << 20:
+            raise ValueError('F-Droid entry.jar is larger than 1 MiB')
+    jar.write_bytes(data)
     entry = read_entry(jar, *verify_jar(jar), pinned)
     seen = check_fresh(directory, entry['timestamp'])
     path = download(REPO + entry['index']['name'], directory / 'index-v2.json', entry['index']['sha256'],

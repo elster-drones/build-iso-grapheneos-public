@@ -241,15 +241,40 @@ class CompileTests(unittest.TestCase):
                     builder.ensure_variant_compiled(stock, variant_dir_with(directory, GREETING_PATCH))
             self.assertFalse((stock.cache / 'openfactory-phone/tree').exists())
 
-    def test_prepare_cache_removes_a_variant_tree_or_signing_tree_left_by_a_killed_run(self):
+    def test_leftovers_of_a_killed_run_are_removed_by_prepare_but_never_by_a_stock_build(self):
+        def leave_leftovers(cache):
+            for stale in ('tree/frameworks', 'sign-frankel/releases', 'releases'):
+                (cache / 'openfactory-phone' / stale).mkdir(parents=True, exist_ok=True)
+            return cache / 'openfactory-phone'
+
         with tempfile.TemporaryDirectory() as directory:
-            run = builder.Builder(STOCK, Path(directory) / 'cache')
-            for stale in ('tree/frameworks', 'sign-frankel/releases'):
-                (run.cache / 'openfactory-phone' / stale).mkdir(parents=True)
-            (run.cache / 'openfactory-phone/releases').mkdir()
-            with patch.object(builder, 'ROOT', Path(directory)), patch.object(builder.shutil, 'copy2'):
-                run.prepare_cache()
-            self.assertEqual(sorted(path.name for path in (run.cache / 'openfactory-phone').iterdir()), ['releases'])
+            variant = leave_leftovers(Path(directory) / 'cache')
+            run_main(directory, STOCK)
+            self.assertEqual(sorted(path.name for path in variant.iterdir()), ['releases', 'sign-frankel', 'tree'])
+        with tempfile.TemporaryDirectory() as directory:
+            variant = leave_leftovers(Path(directory) / 'cache')
+            preparing = Path(directory) / 'cache/.openfactory-preparing'
+            remove = builder.remove_variant_leftovers
+
+            def while_preparing(cache):
+                self.assertTrue(preparing.is_file())
+                remove(cache)
+
+            with patch.object(builder, 'remove_variant_leftovers', side_effect=while_preparing) as removed:
+                run_main(directory, STOCK, ('build.py', 'prepare'), warm=False)
+            self.assertEqual(removed.call_count, 1)
+            self.assertEqual(sorted(path.name for path in variant.iterdir()), ['releases'])
+
+    def test_an_unset_canvas_size_means_1080_as_in_branding(self):
+        with tempfile.TemporaryDirectory() as directory:
+            tree = Path(directory)
+            self.assertEqual(builder.canvas_size(tree, 'frankel'), '1080')
+            (tree / 'vendor/google_devices/frankel').mkdir(parents=True)
+            (tree / 'vendor/google_devices/frankel/frankel.mk').write_text('PRODUCT_NAME := frankel\n')
+            self.assertEqual(builder.canvas_size(tree, 'frankel'), '1080')
+            (tree / 'vendor/google_devices/frankel/frankel.mk').write_text(
+                '$(call soong_config_set,bootanimation_zip,canvas_size,1280)\n')
+            self.assertEqual(builder.canvas_size(tree, 'frankel'), '1280')
 
     def test_the_compile_lock_refuses_a_symlink_or_a_non_file(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -457,6 +482,7 @@ class VariantBuildTests(unittest.TestCase):
             target_files, otatools, marker = builder.variant_outputs(cache, STOCK)
             fake_target_files(target_files)
             write_zip(otatools, {'bin/aapt2': b'aapt2'})
+            (cache / 'openfactory-phone/sign-frankel/releases').mkdir(parents=True)  # left by a killed build
             marker.write_text(f"{STOCK['tag']}\n{builder.variant_sha256()}\n")
             cached = {path: sha256(path.read_bytes()) for path in (target_files, otatools)}
             apks = {'org.fdroid.fdroid': fake_apk(Path(directory) / 'fdroid.apk'),

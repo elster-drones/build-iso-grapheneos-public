@@ -224,9 +224,6 @@ class Builder:
         self.tree.mkdir(exist_ok=True)
         # The synced tree is ~140 GiB; re-owning it every build would take minutes.
         give_to_builder(self.tree, only_if_needed=True)
-        # An OpenFactory Phone compile or signing killed midway leaves up to ~250 GiB behind.
-        for stale in [self.cache / VARIANT / 'tree', *(self.cache / VARIANT).glob('sign-*')]:
-            shutil.rmtree(stale, ignore_errors=True)
 
     def prepare(self, then=None):
         """Sync, extract vendor files and compile, then run then(self): hours under the cache lock.
@@ -242,6 +239,7 @@ class Builder:
             held.write(f'{os.getpid()}\n')
             held.flush()
             try:
+                remove_variant_leftovers(self.cache)
                 self.ensure_source()
                 self.ensure_vendor()
                 self.ensure_compiled()
@@ -557,13 +555,17 @@ def check_compiled_variant(variant, variant_dir=VARIANT_DIR):
 
 
 def canvas_size(tree, device):
-    """The boot animation canvas the device's vendor makefile selects in branding/Android.bp."""
+    """The boot animation canvas the device's vendor makefile selects; 1080 when unset, as in branding/Android.bp."""
     makefile = tree / 'vendor/google_devices' / device / f'{device}.mk'
     found = re.search(r'soong_config_set,\s*bootanimation_zip,\s*canvas_size,\s*(\d+)',
         makefile.read_text() if makefile.is_file() else '')
-    if not found:
-        raise ValueError(f'No boot animation canvas_size for {device} in {makefile}')
-    return found.group(1)
+    return found.group(1) if found else '1080'
+
+
+def remove_variant_leftovers(cache):
+    """Delete a variant tree or signing tree a killed run left behind (up to ~250 GiB); callers hold the locks."""
+    for stale in [cache / VARIANT / 'tree', *(cache / VARIANT).glob('sign-*')]:
+        shutil.rmtree(stale, ignore_errors=True)
 
 
 def ensure_variant_compiled(stock, variant_dir=VARIANT_DIR):
@@ -796,6 +798,7 @@ def build_variant(stock, keys, password, apps, apks, variant_dir=VARIANT_DIR):
     *compiled, _marker = variant_outputs(cache, config)
     scratch = cache / VARIANT / f'sign-{stock.device}'
     releases = scratch / 'releases' / stock.tag
+    remove_variant_leftovers(cache)
     releases.mkdir(parents=True)
     try:
         target_files, otatools = (releases / path.name for path in compiled)
