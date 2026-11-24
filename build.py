@@ -163,15 +163,21 @@ def prepare_marker(cache):
     this process however it ends; the pid is only for operators. The host's
     prepare loop (OpenFactory `scripts/grapheneos-host.py`) holds it across
     every Pixel and sets OPENFACTORY_PREPARE_LOCK_HELD=1; locking it again here
-    would wait for that loop forever.
+    would wait for that loop forever. A hand-run prepare already holds the cache
+    lock, which orders it before any other standalone one, so a taken marker
+    means that loop: waiting for it would hold its next Pixel off the cache lock.
     """
     if os.environ.get('OPENFACTORY_PREPARE_LOCK_HELD') == '1':
         yield
         return
     marker = cache / '.openfactory-preparing'
-    with marker.open('w') as held:
+    with marker.open('a') as held:
         os.fchmod(held.fileno(), 0o644)  # the platform's API account opens it read-only
-        fcntl.flock(held, fcntl.LOCK_EX)
+        try:
+            fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise SystemExit('A host prepare loop holds this cache; run this after that loop finishes') from None
+        held.truncate(0)
         held.write(f'{os.getpid()}\n')
         held.flush()
         try:
