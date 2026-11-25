@@ -78,7 +78,7 @@ def _chunks(url, deadline):
         sock = getattr(getattr(getattr(response, 'fp', None), 'raw', None), '_sock', None)
         read = getattr(response, 'read1', response.read)
         while True:
-            if sock is not None:
+            if sock is not None and not response.isclosed():
                 sock.settimeout(_time_left(deadline))
             try:
                 chunk = read(1 << 20)

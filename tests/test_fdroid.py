@@ -1,4 +1,5 @@
 import base64
+import contextlib
 import hashlib
 import http.server
 import importlib.util
@@ -23,6 +24,7 @@ DEVELOPER, OTHER = 'd' * 64, 'e' * 64
 PEM = '-----BEGIN CERTIFICATE-----\n{}\n-----END CERTIFICATE-----\n'
 NOW_MS = int(time.time() * 1000)
 DER = b'pinned-der'
+BODY = bytes(range(256)) * 12288  # 3 MiB: more than one read
 SIGNER = PEM.format(base64.b64encode(DER).decode())
 
 
@@ -179,24 +181,71 @@ class DrippingHandler(http.server.BaseHTTPRequestHandler):
         pass
 
 
-class DeadlineTests(unittest.TestCase):
-    def test_a_dripping_or_silent_server_cannot_hold_a_download_past_the_deadline(self):
-        server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), DrippingHandler)
-        server.daemon_threads = True
-        threading.Thread(target=server.serve_forever, daemon=True).start()
+class BodyHandler(http.server.BaseHTTPRequestHandler):
+    """A keep-alive server: BODY with a Content-Length (/length), BODY chunked (/chunked), or BODY chunked late
+    and then silence (/stalled)."""
+    protocol_version = 'HTTP/1.1'
+
+    def do_GET(self):
+        self.send_response(200)
+        if self.path == '/length':
+            self.send_header('Content-Length', str(len(BODY)))
+        else:
+            self.send_header('Transfer-Encoding', 'chunked')
+        self.end_headers()
+        if self.path == '/length':
+            self.wfile.write(BODY)
+            return
+        stalled = self.path == '/stalled'
+        time.sleep(1.5 if stalled else 0)
+        self.wfile.write(b'%x\r\n%b\r\n' % (len(BODY), BODY))
+        time.sleep(5 if stalled else 0)
+        self.wfile.write(b'0\r\n\r\n')
+
+    def handle(self):
         try:
-            with tempfile.TemporaryDirectory() as directory, \
-                    patch.dict(os.environ, {'no_proxy': '127.0.0.1', 'NO_PROXY': '127.0.0.1'}):
-                for path in ('/drip', '/silent'):
-                    started = time.monotonic()
-                    with self.assertRaises(TimeoutError):
-                        fdroid.download(f'http://127.0.0.1:{server.server_port}{path}', Path(directory) / 'app.apk',
-                            'a' * 64, 100, time.monotonic() + 0.5)
-                    self.assertLess(time.monotonic() - started, 1.5, path)
-                self.assertFalse(list(Path(directory).iterdir()))
-        finally:
-            server.shutdown()
-            server.server_close()
+            super().handle()
+        except OSError:
+            pass
+
+    def log_message(self, *args):
+        pass
+
+
+@contextlib.contextmanager
+def serving(handler):
+    """A local server for handler; yields its base URL and a directory to download into."""
+    server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), handler)
+    server.daemon_threads = True
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.dict(os.environ, {'no_proxy': '127.0.0.1', 'NO_PROXY': '127.0.0.1'}):
+            yield f'http://127.0.0.1:{server.server_port}', Path(directory)
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+class ServerTests(unittest.TestCase):
+    def test_a_body_is_read_to_its_end_after_which_the_connection_is_closed(self):
+        with serving(BodyHandler) as (url, directory):
+            for path in ('/length', '/chunked'):
+                with self.subTest(path):
+                    target = directory / path[1:]
+                    fdroid.download(url + path, target, hashlib.sha256(BODY).hexdigest(), len(BODY))
+                    self.assertEqual(target.read_bytes(), BODY)
+
+    def test_a_dripping_or_silent_server_cannot_hold_a_download_past_the_deadline(self):
+        for handler, path, deadline in ((DrippingHandler, '/drip', 0.5), (DrippingHandler, '/silent', 0.5),
+                (BodyHandler, '/stalled', 2)):
+            with self.subTest(path), serving(handler) as (url, directory):
+                started = time.monotonic()
+                with self.assertRaises(TimeoutError):
+                    fdroid.download(url + path, directory / 'app.apk', 'a' * 64, len(BODY) + 1,
+                        time.monotonic() + deadline)
+                self.assertLess(time.monotonic() - started, deadline + 1, path)
+                self.assertFalse(list(directory.iterdir()))
 
 
 if __name__ == '__main__':
